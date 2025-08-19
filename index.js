@@ -204,11 +204,12 @@ app.get("/", (req, res) => {
     <p>若你是一般使用者，請回到 Discord 伺服器使用 <code>c!verify</code> 指令完成驗證。</p>
     <hr/>
     <p>👉 測試用登入流程：</p>
-    <a href="https://www.roblox.com/oauth/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.ROBLOX_REDIRECT_URI)}&scope=openid">
+    <a href="https://apis.roblox.com/oauth/v1/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.ROBLOX_REDIRECT_URI)}&scope=openid%20profile&state=test">
       <button style="padding:10px 20px; font-size:16px; cursor:pointer;">登入 Roblox</button>
     </a>
   `);
 });
+
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
