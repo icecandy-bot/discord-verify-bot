@@ -197,7 +197,13 @@ client.on("messageCreate", async (message) => {
 
 // --- Start Bot & Server ---
 client.login(process.env.TOKEN);
-
+app.get("/", (req, res) => {
+  res.send(`
+    <h1>✅ Discord 驗證機器人</h1>
+    <p>這個網站用於支援 Roblox 玩家與 Discord 機器人的驗證流程。</p>
+    <p>若你是一般使用者，請回到 Discord 伺服器使用 <code>c!verify</code> 指令完成驗證。</p>
+  `);
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🌐 Express server running at http://localhost:${PORT}`);
