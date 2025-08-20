@@ -17,16 +17,9 @@ const client = new Client({
 });
 
 // --- In-memory sessions ---
-// sessions[userId or "test"] = {
-//   playerName: string,
-//   state: string,
-//   kills: number|null,
-//   robloxVerified: boolean,
-//   channelId: string|null,
-//   waitingForScreenshot: boolean,
-//   isTest?: boolean
-// }
 const sessions = new Map();
+// 額外記錄已經用過的 OAuth code
+const usedCodes = new Set();
 
 // --- Express App ---
 const app = express();
@@ -74,6 +67,11 @@ app.get("/callback", async (req, res) => {
     return res.status(400).send("缺少 code 或 state");
   }
 
+  // 防止同一個 code 被重複使用
+  if (usedCodes.has(code)) {
+    return res.status(400).send(page("無效請求", "<h1>⚠️ 此驗證碼已經用過了，請重新發起驗證流程。</h1>"));
+  }
+
   const session = sessions.get(state);
   if (!session) {
     return res.status(400).send("Session 過期或不存在");
@@ -101,6 +99,9 @@ app.get("/callback", async (req, res) => {
         .send(page("取得 Token 失敗", `<h1>❌ 取得 Token 失敗</h1><pre>${JSON.stringify(tokenData, null, 2)}</pre>`));
     }
 
+    // 👉 確認成功後才標記 code 已使用
+    usedCodes.add(code);
+
     // 2) 取得玩家資訊
     const userResp = await fetch("https://apis.roblox.com/oauth/v1/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
@@ -108,33 +109,29 @@ app.get("/callback", async (req, res) => {
     const userData = await userResp.json();
     const robloxName = userData.name || userData.preferred_username || "(未知)";
 
-    // 3) 比對名稱（測試模式跳過嚴格比對）
+    // 3) 比對名稱
     const isTest = !!session.isTest || state === "test" || !session.channelId;
     const nameMatched = isTest
       ? true
       : robloxName.toLowerCase() === session.playerName.toLowerCase();
 
     if (isTest) {
-      // 👉 首頁測試：只在網頁上顯示結果（不觸碰 Discord）
       const ok = nameMatched && (session.kills ?? 0) >= 3000;
       return res.send(
-        page(
-          ok ? "測試驗證成功" : "測試驗證資訊",
-          `
+        page(ok ? "測試驗證成功" : "測試驗證資訊", `
           <h1>${ok ? "✅ 測試驗證成功" : "ℹ️ 測試驗證資訊"}</h1>
           <div class="kv">
             <div><p>Roblox 名稱：</p><p><b>${robloxName}</b></p></div>
-            <div><p>模擬玩家名稱：</p><p><b>${session.playerName}</b>（測試模式不嚴格比對）</p></div>
-            <div><p>模擬擊殺數：</p><p><b>${session.kills ?? "N/A"}</b>（測試用）</p></div>
+            <div><p>模擬玩家名稱：</p><p><b>${session.playerName}</b></p></div>
+            <div><p>模擬擊殺數：</p><p><b>${session.kills ?? "N/A"}</b></p></div>
           </div>
           <hr/>
           <p class="muted">此頁為 <b>審核測試</b> 頁面，實際驗證請至 Discord 使用 <code>c!verify</code>。</p>
-        `
-        )
+        `)
       );
     }
 
-    // 👉 正式 Discord 流程：把結果發回頻道
+    // 👉 正式 Discord 流程
     try {
       const channel = await client.channels.fetch(session.channelId);
       if (nameMatched) {
@@ -145,7 +142,6 @@ app.get("/callback", async (req, res) => {
           `❌ Roblox 驗證失敗！你輸入的是 **${session.playerName}**，但 OAuth 回傳的是 **${robloxName}**`
         );
       }
-      // 檢查最終結果（3000+）
       await checkFinalVerification(state);
       return res.send(
         page("驗證完成", `<h1>✅ 已完成 OAuth</h1><p>請回到 Discord 查看最終結果。</p>`)
@@ -154,14 +150,7 @@ app.get("/callback", async (req, res) => {
       console.error("[Discord Send Error]", e);
       return res
         .status(500)
-        .send(
-          page(
-            "Discord 傳送失敗",
-            `<h1>⚠️ Discord 傳送失敗</h1><p>Bot 可能尚未登入或頻道ID無效。</p><pre>${String(
-              e
-            )}</pre>`
-          )
-        );
+        .send(page("Discord 傳送失敗", `<h1>⚠️ Discord 傳送失敗</h1><pre>${String(e)}</pre>`));
     }
   } catch (err) {
     console.error("[OAuth Error]", err);
@@ -356,3 +345,4 @@ app.listen(PORT, () => {
   console.log(`🌐 HTTP server running on port ${PORT}`);
 });
 
+client.login(process.env.TOKEN);
