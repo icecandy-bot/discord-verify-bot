@@ -232,7 +232,7 @@ client.on("messageCreate", async (message) => {
     return message.channel.send({
       content: `🔍 玩家名稱 **${playerName}** 已記錄。\n請上傳「遊戲截圖」（顯示玩家名稱與擊殺數的畫面）。\n\n以下為範例：`,
       files: [
-        "https://media.discordapp.net/attachments/1384749736728465418/1407231175432601671/image.png?format=webp&quality=lossless",
+        "https://media.discordapp.net/attachments/1384749736728465418/1407589550837993532/image.png?ex=68a6a76c&is=68a555ec&hm=144c4609581d26abb9ed4b2cfd65d42e1946e2199e3c63e49d2ecae16565c10b&=&format=webp&quality=lossless",
       ],
     });
   }
