@@ -221,7 +221,14 @@ client.on("messageCreate", async (message) => {
     };
     sessions.set(state, session);
 
-return message.channel.send({ content: 🔍 玩家名稱 **${playerName}** 已記錄。\n請上傳「遊戲截圖」（顯示玩家名稱與擊殺數的畫面）。\n\n以下為範例：, files: [ "https://media.discordapp.net/attachments/1288861623427010693/1407203519114510437/image.png?ex=68a53fe7&is=68a3ee67&hm=9ce6b89e4f8020a2c72e136a3e5f2551fc898fb018d4654d6a259f4d9159d216&=&format=webp&quality=lossless" ] }); }
+    return message.channel.send({
+      content:
+        `🔍 玩家名稱 **${playerName}** 已記錄。\n請上傳「遊戲截圖」（顯示玩家名稱與擊殺數的畫面）。\n\n以下為範例：`,
+      files: [
+        "https://media.discordapp.net/attachments/1288861623427010693/1407203519114510437/image.png"
+      ]
+    });
+  }
 
   // Step 2: 玩家上傳截圖 → OCR 取最大數字
   if (message.attachments.size > 0) {
