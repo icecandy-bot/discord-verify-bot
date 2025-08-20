@@ -195,9 +195,17 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// --- Start Bot & Server ---
-client.login(process.env.TOKEN);
 app.get("/", (req, res) => {
+  // 預先寫死一個測試 session
+  sessions.set("test", {
+    playerName: "DemoPlayer",
+    state: "test",
+    kills: 5000,
+    robloxVerified: false,
+    channelId: null, // 沒有 Discord 頻道也行
+    waitingForScreenshot: false
+  });
+
   res.send(`
     <h1>✅ Discord 驗證機器人</h1>
     <p>這個網站用於支援 Roblox 玩家與 Discord 機器人的驗證流程。</p>
@@ -209,6 +217,7 @@ app.get("/", (req, res) => {
     </a>
   `);
 });
+
 
 
 const PORT = process.env.PORT || 3000;
