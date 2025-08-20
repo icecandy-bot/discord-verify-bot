@@ -246,22 +246,25 @@ client.on("messageCreate", async (message) => {
     await message.channel.send("📷 正在辨識遊戲截圖，請稍候...");
 
     try {
-      const { data } = await Tesseract.recognize(imgUrl, "eng");
-      const text = data.text || "";
-      const numbers = (text.match(/\d+/g) || [])
-        .map((n) => parseInt(n, 10))
-        .filter(Number.isFinite);
+const { data } = await Tesseract.recognize(imgUrl, "eng");
+const text = data.text || "";
 
-      if (numbers.length === 0) {
-        return message.channel.send(
-          "⚠️ 無法辨識數字，請確認截圖清晰（建議關閉動態濾鏡、用原圖上傳）。"
-        );
-      }
+// 允許數字中有逗號，先去掉逗號再轉成數字
+const numbers = (text.match(/\d[\d,]*/g) || [])
+  .map((n) => parseInt(n.replace(/,/g, ""), 10))
+  .filter(Number.isFinite);
 
-      const kills = Math.max(...numbers);
-      session.kills = kills;
-      session.waitingForScreenshot = false;
-      sessions.set(message.author.id, session);
+if (numbers.length === 0) {
+  return message.channel.send(
+    "⚠️ 無法辨識數字，請確認截圖清晰（建議關閉動態濾鏡、用原圖上傳）。"
+  );
+}
+
+const kills = Math.max(...numbers);
+session.kills = kills;
+session.waitingForScreenshot = false;
+sessions.set(message.author.id, session);
+
 
       const authUrl = `https://apis.roblox.com/oauth/v1/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(
         process.env.ROBLOX_REDIRECT_URI
