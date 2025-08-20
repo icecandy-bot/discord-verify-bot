@@ -12,38 +12,75 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages
-  ]
+    GatewayIntentBits.DirectMessages,
+  ],
 });
 
 // --- In-memory sessions ---
-// sessions[userId] = {
+// sessions[userId or "test"] = {
 //   playerName: string,
 //   state: string,
 //   kills: number|null,
 //   robloxVerified: boolean,
-//   channelId: string,
-//   waitingForScreenshot: boolean
+//   channelId: string|null,
+//   waitingForScreenshot: boolean,
+//   isTest?: boolean
 // }
 const sessions = new Map();
 
-// --- Express App for OAuth Callback ---
+// --- Express App ---
 const app = express();
 
+/** 小工具：產出簡單 HTML 頁面 */
+const page = (title, body) => `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body{font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji"; margin:0; background:#0b1220; color:#e5e7eb;}
+  .wrap{max-width:780px; margin:40px auto; padding:24px;}
+  .card{background:#111827; border:1px solid #1f2937; border-radius:16px; padding:24px; box-shadow: 0 10px 25px rgba(0,0,0,.25);}
+  h1{margin:0 0 12px 0; font-size:28px;}
+  p{line-height:1.7; margin:10px 0;}
+  code{background:#1f2937; padding:2px 6px; border-radius:6px;}
+  .btn{display:inline-block; padding:12px 18px; border-radius:10px; text-decoration:none; border:1px solid #374151;}
+  .primary{background:#2563eb; color:white; border-color:#1d4ed8;}
+  .muted{color:#9ca3af;}
+  .row{display:flex; gap:12px; flex-wrap:wrap; margin-top:12px;}
+  .ok{color:#34d399;} .bad{color:#f87171;}
+  footer{margin-top:24px; font-size:13px; color:#9ca3af}
+  hr{border:0; height:1px; background:#1f2937; margin:18px 0;}
+  .kv{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+  .kv > div{flex:1 1 220px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      ${body}
+      <footer>© ${new Date().getFullYear()} Discord Verify Bot</footer>
+    </div>
+  </div>
+</body>
+</html>`;
+
+// --- Roblox OAuth Callback ---
 app.get("/callback", async (req, res) => {
   const { code, state } = req.query;
   if (!code || !state) {
     return res.status(400).send("缺少 code 或 state");
   }
 
-  const userId = state;
-  const session = sessions.get(userId);
+  const session = sessions.get(state);
   if (!session) {
     return res.status(400).send("Session 過期或不存在");
   }
 
   try {
-    // 1. 換取 Token
+    // 1) 換取 Token
     const tokenResp = await fetch("https://apis.roblox.com/oauth/v1/token", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -52,79 +89,119 @@ app.get("/callback", async (req, res) => {
         client_secret: process.env.ROBLOX_CLIENT_SECRET,
         grant_type: "authorization_code",
         code,
-        redirect_uri: process.env.ROBLOX_REDIRECT_URI
-      })
+        redirect_uri: process.env.ROBLOX_REDIRECT_URI,
+      }),
     });
 
     const tokenData = await tokenResp.json();
     if (!tokenData.access_token) {
       console.error("OAuth Token Error:", tokenData);
-      return res.status(400).send("取得 Token 失敗");
+      return res
+        .status(400)
+        .send(page("取得 Token 失敗", `<h1>❌ 取得 Token 失敗</h1><pre>${JSON.stringify(tokenData, null, 2)}</pre>`));
     }
 
-    // 2. 取得玩家資訊
+    // 2) 取得玩家資訊
     const userResp = await fetch("https://apis.roblox.com/oauth/v1/userinfo", {
-      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-
     const userData = await userResp.json();
-    const robloxName = userData.name || userData.preferred_username;
+    const robloxName = userData.name || userData.preferred_username || "(未知)";
 
-    // 3. 比對名稱
-    const matched =
-      robloxName.toLowerCase() === session.playerName.toLowerCase();
+    // 3) 比對名稱（測試模式跳過嚴格比對）
+    const isTest = !!session.isTest || state === "test" || !session.channelId;
+    const nameMatched = isTest
+      ? true
+      : robloxName.toLowerCase() === session.playerName.toLowerCase();
 
-    const channel = await client.channels.fetch(session.channelId);
-    if (matched) {
-      session.robloxVerified = true;
-      channel.send(`✅ Roblox 驗證成功！名稱符合：**${robloxName}**`);
-    } else {
-      channel.send(
-        `❌ Roblox 驗證失敗！你輸入的是 **${session.playerName}**，但 Roblox OAuth 回傳的是 **${robloxName}**`
+    if (isTest) {
+      // 👉 首頁測試：只在網頁上顯示結果（不觸碰 Discord）
+      const ok = nameMatched && (session.kills ?? 0) >= 3000;
+      return res.send(
+        page(
+          ok ? "測試驗證成功" : "測試驗證資訊",
+          `
+          <h1>${ok ? "✅ 測試驗證成功" : "ℹ️ 測試驗證資訊"}</h1>
+          <div class="kv">
+            <div><p>Roblox 名稱：</p><p><b>${robloxName}</b></p></div>
+            <div><p>模擬玩家名稱：</p><p><b>${session.playerName}</b>（測試模式不嚴格比對）</p></div>
+            <div><p>模擬擊殺數：</p><p><b>${session.kills ?? "N/A"}</b>（測試用）</p></div>
+          </div>
+          <hr/>
+          <p class="muted">此頁為 <b>審核測試</b> 頁面，實際驗證請至 Discord 使用 <code>c!verify</code>。</p>
+        `
+        )
       );
     }
 
-    // 4. 如果兩邊都完成 → 最終驗證
-    checkFinalVerification(userId);
-
-    res.send("驗證完成！請回到 Discord 查看結果。");
+    // 👉 正式 Discord 流程：把結果發回頻道
+    try {
+      const channel = await client.channels.fetch(session.channelId);
+      if (nameMatched) {
+        session.robloxVerified = true;
+        await channel.send(`✅ Roblox 驗證成功！名稱符合：**${robloxName}**`);
+      } else {
+        await channel.send(
+          `❌ Roblox 驗證失敗！你輸入的是 **${session.playerName}**，但 OAuth 回傳的是 **${robloxName}**`
+        );
+      }
+      // 檢查最終結果（3000+）
+      await checkFinalVerification(state);
+      return res.send(
+        page("驗證完成", `<h1>✅ 已完成 OAuth</h1><p>請回到 Discord 查看最終結果。</p>`)
+      );
+    } catch (e) {
+      console.error("[Discord Send Error]", e);
+      return res
+        .status(500)
+        .send(
+          page(
+            "Discord 傳送失敗",
+            `<h1>⚠️ Discord 傳送失敗</h1><p>Bot 可能尚未登入或頻道ID無效。</p><pre>${String(
+              e
+            )}</pre>`
+          )
+        );
+    }
   } catch (err) {
     console.error("[OAuth Error]", err);
-    res.status(500).send("驗證過程發生錯誤");
+    return res.status(500).send(page("驗證過程發生錯誤", `<h1>❌ 驗證過程發生錯誤</h1><pre>${String(err)}</pre>`));
   }
 });
 
-// --- 最終驗證檢查 ---
+// --- 驗證檢查（Discord 專用：須同時通過 kills 與 robloxVerified） ---
 async function checkFinalVerification(userId) {
   const session = sessions.get(userId);
   if (!session) return;
 
   if (session.kills !== null && session.robloxVerified) {
-    const channel = await client.channels.fetch(session.channelId);
-
-    if (session.kills >= 3000) {
-      channel.send(
-        `🎉 所有驗證完成！玩家 **${session.playerName}** 擊殺數：**${session.kills}** ✅`
-      );
-    } else {
-      channel.send(
-        `❌ 驗證失敗！玩家 **${session.playerName}** 擊殺數只有 **${session.kills}**，必須 ≥ 3000 才能通過驗證。`
-      );
+    try {
+      const channel = await client.channels.fetch(session.channelId);
+      if (session.kills >= 3000) {
+        await channel.send(
+          `🎉 所有驗證完成！玩家 **${session.playerName}** 擊殺數：**${session.kills}** ✅`
+        );
+      } else {
+        await channel.send(
+          `❌ 驗證失敗！玩家 **${session.playerName}** 擊殺數只有 **${session.kills}**，必須 ≥ 3000 才能通過驗證。`
+        );
+      }
+    } catch (e) {
+      console.error("[Discord Send Error - Finalize]", e);
+    } finally {
+      sessions.delete(userId);
     }
-
-    // 驗證結束 → 清掉 session
-    sessions.delete(userId);
   }
 }
 
 // --- Discord Bot Commands ---
 client.once("ready", () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user?.tag}`);
 });
 
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
-  const content = message.content?.trim() || "";
+  const content = (message.content || "").trim();
 
   // Step 1: c!verify 玩家名稱
   if (content.startsWith("c!verify")) {
@@ -134,26 +211,19 @@ client.on("messageCreate", async (message) => {
     }
 
     const state = message.author.id;
-    const session = sessions.get(state) || {
+    const session = {
+      playerName,
+      state,
       kills: null,
-      robloxVerified: false
+      robloxVerified: false,
+      channelId: message.channel.id,
+      waitingForScreenshot: true,
     };
-    session.playerName = playerName;
-    session.state = state;
-    session.channelId = message.channel.id;
-    session.waitingForScreenshot = true;
     sessions.set(state, session);
 
-    return message.channel.send({
-    content:
-      `🔍 玩家名稱 **${playerName}** 已記錄。\n請上傳「遊戲截圖」（顯示玩家名稱與擊殺數的畫面）。\n\n以下為範例：`,
-    files: [
-      "https://media.discordapp.net/attachments/1288861623427010693/1407203519114510437/image.png?ex=68a53fe7&is=68a3ee67&hm=9ce6b89e4f8020a2c72e136a3e5f2551fc898fb018d4654d6a259f4d9159d216&=&format=webp&quality=lossless"
-    ]
-  });
-}
+return message.channel.send({ content: 🔍 玩家名稱 **${playerName}** 已記錄。\n請上傳「遊戲截圖」（顯示玩家名稱與擊殺數的畫面）。\n\n以下為範例：, files: [ "https://media.discordapp.net/attachments/1288861623427010693/1407203519114510437/image.png?ex=68a53fe7&is=68a3ee67&hm=9ce6b89e4f8020a2c72e136a3e5f2551fc898fb018d4654d6a259f4d9159d216&=&format=webp&quality=lossless" ] }); }
 
-  // Step 2: 玩家上傳遊戲截圖
+  // Step 2: 玩家上傳截圖 → OCR 取最大數字
   if (message.attachments.size > 0) {
     const session = sessions.get(message.author.id);
     if (!session || !session.waitingForScreenshot) return;
@@ -162,13 +232,12 @@ client.on("messageCreate", async (message) => {
     await message.channel.send("📷 正在辨識遊戲截圖，請稍候...");
 
     try {
-      const result = await Tesseract.recognize(imgUrl, "eng");
-      const text = result.data.text;
+      const { data } = await Tesseract.recognize(imgUrl, "eng");
+      const text = data.text || "";
+      const numbers = (text.match(/\d+/g) || []).map((n) => parseInt(n, 10)).filter(Number.isFinite);
 
-      // 找出所有數字，直接取最大值
-      const numbers = text.match(/\d+/g)?.map((n) => parseInt(n)) || [];
       if (numbers.length === 0) {
-        return message.channel.send("⚠️ 無法辨識數字，請確認截圖清晰。");
+        return message.channel.send("⚠️ 無法辨識數字，請確認截圖清晰（建議關閉動態濾鏡、用原圖上傳）。");
       }
 
       const kills = Math.max(...numbers);
@@ -176,7 +245,6 @@ client.on("messageCreate", async (message) => {
       session.waitingForScreenshot = false;
       sessions.set(message.author.id, session);
 
-      // 發 OAuth 連結
       const authUrl =
         `https://apis.roblox.com/oauth/v1/authorize` +
         `?client_id=${process.env.ROBLOX_CLIENT_ID}` +
@@ -195,32 +263,89 @@ client.on("messageCreate", async (message) => {
   }
 });
 
+// --- 首頁（給官方審查用，內建測試 session） ---
 app.get("/", (req, res) => {
-  // 預先寫死一個測試 session
+  // 每次刷新首頁都建立 / 更新一個測試 session
   sessions.set("test", {
     playerName: "DemoPlayer",
     state: "test",
-    kills: 5000,
+    kills: 5000, // 測試值，≥3000
     robloxVerified: false,
-    channelId: null, // 沒有 Discord 頻道也行
-    waitingForScreenshot: false
+    channelId: null, // 無 Discord 頻道
+    waitingForScreenshot: false,
+    isTest: true,
   });
 
-  res.send(`
-    <h1>✅ Discord 驗證機器人</h1>
-    <p>這個網站用於支援 Roblox 玩家與 Discord 機器人的驗證流程。</p>
-    <p>若你是一般使用者，請回到 Discord 伺服器使用 <code>c!verify</code> 指令完成驗證。</p>
-    <hr/>
-    <p>👉 測試用登入流程：</p>
-    <a href="https://apis.roblox.com/oauth/v1/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(process.env.ROBLOX_REDIRECT_URI)}&scope=openid%20profile&state=test">
-      <button style="padding:10px 20px; font-size:16px; cursor:pointer;">登入 Roblox</button>
-    </a>
-  `);
+  const authUrl =
+    `https://apis.roblox.com/oauth/v1/authorize` +
+    `?client_id=${process.env.ROBLOX_CLIENT_ID}` +
+    `&response_type=code` +
+    `&redirect_uri=${encodeURIComponent(process.env.ROBLOX_REDIRECT_URI)}` +
+    `&scope=openid%20profile` +
+    `&state=test`;
+
+  res.send(
+    page(
+      "Discord 驗證機器人",
+      `
+      <h1>✅ Discord 驗證機器人</h1>
+      <p>這個網站用於支援 Roblox 與 Discord 的身分驗證流程。</p>
+      <div class="kv">
+        <div>
+          <p><b>玩家使用方式</b></p>
+          <p>回到 Discord 伺服器輸入 <code>c!verify 您的玩家名稱</code>，依照指示上傳截圖，最後點擊登入 Roblox 完成驗證。</p>
+        </div>
+        <div>
+          <p><b>審核／測試</b></p>
+          <p>可直接點擊下方按鈕進行 OAuth 測試（不需 Discord）。</p>
+        </div>
+      </div>
+      <div class="row">
+        <a class="btn primary" href="${authUrl}">登入 Roblox（測試）</a>
+        <a class="btn" href="/privacy" target="_blank">Privacy Policy</a>
+        <a class="btn" href="/terms" target="_blank">Terms of Service</a>
+      </div>
+      <hr/>
+      <p class="muted">備註：測試模式會直接視為名稱比對成功，只做 OAuth 流程驗證示範。</p>
+    `
+    )
+  );
 });
 
+// --- 簡版隱私與條款頁（可直接填到 Roblox 後台） ---
+app.get("/privacy", (req, res) => {
+  res.send(
+    page(
+      "Privacy Policy",
+      `
+      <h1>Privacy Policy</h1>
+      <p>We only process information necessary to complete Roblox OAuth and Discord verification (e.g., Roblox username, OAuth tokens in transit). We do not sell or share personal data.</p>
+      <p>OAuth tokens are exchanged server-to-server and not stored persistently.</p>
+      <p>If you have questions, contact the Discord server admins.</p>
+    `
+    )
+  );
+});
 
+app.get("/terms", (req, res) => {
+  res.send(
+    page(
+      "Terms of Service",
+      `
+      <h1>Terms of Service</h1>
+      <p>By using this verification, you agree to follow the community rules of the Discord server and Roblox platform.</p>
+      <p>The service is provided "as is" without warranties. Abuse may result in denial of access.</p>
+    `
+    )
+  );
+});
 
+// --- Health check（給 UptimeRobot/Render） ---
+app.get("/health", (req, res) => res.type("text").send("ok"));
+
+// --- Start server & bot ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🌐 Express server running at http://localhost:${PORT}`);
+  console.log(`🌐 HTTP server running on port ${PORT}`);
 });
+
