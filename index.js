@@ -122,8 +122,7 @@ app.get("/callback", async (req, res) => {
           <h1>${ok ? "✅ 測試驗證成功" : "ℹ️ 測試驗證資訊"}</h1>
           <div class="kv">
             <div><p>Roblox 名稱：</p><p><b>${robloxName}</b></p></div>
-            <div><p>模擬玩家名稱：</p><p><b>${session.playerName}</b></p></div>
-            <div><p>模擬擊殺數：</p><p><b>${session.kills ?? "N/A"}</b></p></div>
+           
           </div>
           <hr/>
           <p class="muted">此頁為 <b>審核測試</b> 頁面，實際驗證請至 Discord 使用 <code>c!verify</code>。</p>
@@ -219,7 +218,14 @@ client.on("messageCreate", async (message) => {
     });
   }
 
-  // Step 2: 玩家上傳截圖 → OCR 取最大數字
+ import Jimp from "jimp";
+import Tesseract from "tesseract.js";
+
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
+  const content = message.content?.trim() || "";
+
+  // Step 2: 玩家上傳遊戲截圖
   if (message.attachments.size > 0) {
     const session = sessions.get(message.author.id);
     if (!session || !session.waitingForScreenshot) return;
@@ -228,19 +234,41 @@ client.on("messageCreate", async (message) => {
     await message.channel.send("📷 正在辨識遊戲截圖，請稍候...");
 
     try {
-      const { data } = await Tesseract.recognize(imgUrl, "eng");
-      const text = data.text || "";
-      const numbers = (text.match(/\d+/g) || []).map((n) => parseInt(n, 10)).filter(Number.isFinite);
+      // --- 用 Jimp 裁切右邊數字區塊 ---
+      const image = await Jimp.read(imgUrl);
+      const width = image.bitmap.width;
+      const height = image.bitmap.height;
 
+      // 假設數字都在圖片右側 → 裁掉右邊 35%
+      const cropX = Math.floor(width * 0.65);
+      const cropY = 0;
+      const cropWidth = Math.floor(width * 0.35);
+      const cropHeight = height;
+
+      image.crop(cropX, cropY, cropWidth, cropHeight);
+      const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
+
+      // --- OCR 辨識 ---
+      const result = await Tesseract.recognize(buffer, "eng", {
+        tessedit_char_whitelist: "0123456789,"
+      });
+
+      const text = result.data.text;
+      console.log("OCR 結果：", text);
+
+      const numbers =
+        text.match(/\d+/g)?.map((n) => parseInt(n.replace(/,/g, ""))) || [];
       if (numbers.length === 0) {
-        return message.channel.send("⚠️ 無法辨識數字，請確認截圖清晰（建議關閉動態濾鏡、用原圖上傳）。");
+        return message.channel.send("⚠️ 無法辨識數字，請確認截圖清晰。");
       }
 
-      const kills = Math.max(...numbers);
+      // 這裡只剩右邊數字 → 直接取第一個
+      const kills = numbers[0];
       session.kills = kills;
       session.waitingForScreenshot = false;
       sessions.set(message.author.id, session);
 
+      // 發 OAuth 連結
       const authUrl =
         `https://apis.roblox.com/oauth/v1/authorize` +
         `?client_id=${process.env.ROBLOX_CLIENT_ID}` +
@@ -258,6 +286,7 @@ client.on("messageCreate", async (message) => {
     }
   }
 });
+
 
 // --- 首頁（給官方審查用，內建測試 session） ---
 app.get("/", (req, res) => {
