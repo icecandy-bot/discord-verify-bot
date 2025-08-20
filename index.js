@@ -214,7 +214,7 @@ client.on("messageCreate", async (message) => {
       content:
         `🔍 玩家名稱 **${playerName}** 已記錄。\n請上傳「遊戲截圖」（顯示玩家名稱與擊殺數的畫面）。\n\n以下為範例：`,
       files: [
-        "https://media.discordapp.net/attachments/1288861623427010693/1407203519114510437/image.png"
+        "https://media.discordapp.net/attachments/1384749736728465418/1407231175432601671/image.png?ex=68a60269&is=68a4b0e9&hm=c91e2043b2f433484aeba9861d8c2a8fe44d3e34445e463e25e00dc6df8cfef8&=&format=webp&quality=lossless"
       ]
     });
   }
