@@ -251,8 +251,10 @@ if (message.attachments.size > 0) {
   await message.channel.send("📷 正在增強圖片並辨識，請稍候...");
 
   try {
+    // ⚡ 動態載入 Jimp
+    const { default: Jimp } = await import("jimp");
 
-
+    // 讀取圖片並增強
     const image = await Jimp.read(imgUrl);
     image
       .resize(image.bitmap.width * 2, Jimp.AUTO)
@@ -264,19 +266,17 @@ if (message.attachments.size > 0) {
 
     const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
 
-
     // --- 把處理後的圖片丟回 Discord ---
     const processedAttachment = new AttachmentBuilder(buffer, { name: "processed.png" });
     await message.channel.send({ content: "🖼️ 已處理過的圖片：", files: [processedAttachment] });
 
-      const { data } = await Tesseract.recognize(buffer, "eng");
-      const text = data.text || "";
-});
+    // OCR 辨識
+    const { data } = await Tesseract.recognize(buffer, "eng");
+    const text = data.text || "";
 
-const numbers = (data.text.match(/\d[\d,]*/g) || [])
-  .map((n) => parseInt(n.replace(/,/g, ""), 10))
-  .filter(Number.isFinite);
-
+    const numbers = (text.match(/\d[\d,]*/g) || [])
+      .map((n) => parseInt(n.replace(/,/g, ""), 10))
+      .filter(Number.isFinite);
 
     if (numbers.length === 0) {
       return message.channel.send(
@@ -284,11 +284,13 @@ const numbers = (data.text.match(/\d[\d,]*/g) || [])
       );
     }
 
+    // 取最大值當擊殺數
     const kills = Math.max(...numbers);
     session.kills = kills;
     session.waitingForScreenshot = false;
     sessions.set(message.author.id, session);
 
+    // Roblox OAuth 連結
     const authUrl = `https://apis.roblox.com/oauth/v1/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(
       process.env.ROBLOX_REDIRECT_URI
     )}&scope=openid%20profile&state=${session.state}`;
@@ -298,10 +300,10 @@ const numbers = (data.text.match(/\d[\d,]*/g) || [])
     );
   } catch (err) {
     console.error("[OCR Error]", err);
-    message.channel.send("❌ 圖片處理或 OCR 失敗，請再試一次。");
+    await message.channel.send("❌ 圖片處理或 OCR 失敗，請再試一次。");
   }
 }
-});
+
 
 // --- 首頁（測試用） ---
 app.get("/", (req, res) => {
