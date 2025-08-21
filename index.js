@@ -239,7 +239,6 @@ client.on("messageCreate", async (message) => {
 
 // 在需要用的地方（OCR 區塊）
 const { default: Jimp } = await import("jimp");
-const Jimp = jimp;
 import { AttachmentBuilder } from "discord.js"; // 記得加這行
 
 // Step 2: 玩家上傳截圖 → OCR
