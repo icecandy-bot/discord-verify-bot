@@ -237,47 +237,68 @@ client.on("messageCreate", async (message) => {
     });
   }
 
-  // Step 2: 玩家上傳截圖 → OCR
-  if (message.attachments.size > 0) {
-    const session = sessions.get(message.author.id);
-    if (!session || !session.waitingForScreenshot) return;
+ import Jimp from "jimp";
+import { AttachmentBuilder } from "discord.js"; // 記得加這行
 
-    const imgUrl = message.attachments.first().url;
-    await message.channel.send("📷 正在辨識遊戲截圖，請稍候...");
+// Step 2: 玩家上傳截圖 → OCR
+if (message.attachments.size > 0) {
+  const session = sessions.get(message.author.id);
+  if (!session || !session.waitingForScreenshot) return;
 
-    try {
-const { data } = await Tesseract.recognize(imgUrl, "eng");
-const text = data.text || "";
+  const imgUrl = message.attachments.first().url;
+  await message.channel.send("📷 正在增強圖片並辨識，請稍候...");
 
-// 允許數字中有逗號，先去掉逗號再轉成數字
-const numbers = (text.match(/\d[\d,]*/g) || [])
-  .map((n) => parseInt(n.replace(/,/g, ""), 10))
-  .filter(Number.isFinite);
-
-if (numbers.length === 0) {
-  return message.channel.send(
-    "⚠️ 無法辨識數字，請確認截圖清晰（建議關閉動態濾鏡、用原圖上傳）。"
-  );
-}
-
-const kills = Math.max(...numbers);
-session.kills = kills;
-session.waitingForScreenshot = false;
-sessions.set(message.author.id, session);
+  try {
+    // 下載並處理圖片
+    const image = await Jimp.read(imgUrl);
+   image
+  .resize(image.bitmap.width * 2, Jimp.AUTO) // 放大
+  .grayscale()                               // 灰階
+  .contrast(0.8)                             // 對比再拉高一點
+  .normalize()                               // 自動亮度校正
+  .posterize(2)                              // 減少顏色層級，變成更乾淨的黑白
+  .brightness(0.1);                          // 微調亮度
 
 
-      const authUrl = `https://apis.roblox.com/oauth/v1/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(
-        process.env.ROBLOX_REDIRECT_URI
-      )}&scope=openid%20profile&state=${session.state}`;
+    // 轉成 Buffer
+    const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
 
-      await message.channel.send(
-        `✅ 已辨識擊殺數：**${kills}**\n請點擊以下連結登入 Roblox 驗證：\n${authUrl}`
+    // --- 把處理後的圖片丟回 Discord ---
+    const processedAttachment = new AttachmentBuilder(buffer, { name: "processed.png" });
+    await message.channel.send({ content: "🖼️ 已處理過的圖片：", files: [processedAttachment] });
+
+const { data } = await Tesseract.recognize(buffer, "eng+osd", {
+  tessedit_char_whitelist: "0123456789",
+});
+
+
+    const numbers = (text.match(/\d[\d,]*/g) || [])
+      .map((n) => parseInt(n.replace(/,/g, ""), 10))
+      .filter(Number.isFinite);
+
+    if (numbers.length === 0) {
+      return message.channel.send(
+        "⚠️ 無法辨識數字，請確認截圖清晰（建議關閉動態濾鏡、用原圖上傳）。"
       );
-    } catch (err) {
-      console.error("[OCR Error]", err);
-      message.channel.send("❌ OCR 辨識失敗，請再試一次。");
     }
+
+    const kills = Math.max(...numbers);
+    session.kills = kills;
+    session.waitingForScreenshot = false;
+    sessions.set(message.author.id, session);
+
+    const authUrl = `https://apis.roblox.com/oauth/v1/authorize?client_id=${process.env.ROBLOX_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(
+      process.env.ROBLOX_REDIRECT_URI
+    )}&scope=openid%20profile&state=${session.state}`;
+
+    await message.channel.send(
+      `✅ 已辨識擊殺數：**${kills}**\n請點擊以下連結登入 Roblox 驗證：\n${authUrl}`
+    );
+  } catch (err) {
+    console.error("[OCR Error]", err);
+    message.channel.send("❌ 圖片處理或 OCR 失敗，請再試一次。");
   }
+}
 });
 
 // --- 首頁（測試用） ---
