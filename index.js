@@ -4,7 +4,7 @@ import fetch from "node-fetch";
 import Tesseract from "tesseract.js";
 import dotenv from "dotenv";
 import { AttachmentBuilder } from "discord.js";
-
+import Jimp from "jimp"
 dotenv.config();
 
 // --- Discord Client ---
@@ -251,8 +251,7 @@ if (message.attachments.size > 0) {
   await message.channel.send("📷 正在增強圖片並辨識，請稍候...");
 
   try {
-    // ⚡ 動態載入 Jimp
-    const { default: Jimp } = await import("jimp");
+
 
     const image = await Jimp.read(imgUrl);
     image
@@ -274,10 +273,10 @@ const { data } = await Tesseract.recognize(buffer, "eng+osd", {
   tessedit_char_whitelist: "0123456789",
 });
 
+const numbers = (data.text.match(/\d[\d,]*/g) || [])
+  .map((n) => parseInt(n.replace(/,/g, ""), 10))
+  .filter(Number.isFinite);
 
-    const numbers = (text.match(/\d[\d,]*/g) || [])
-      .map((n) => parseInt(n.replace(/,/g, ""), 10))
-      .filter(Number.isFinite);
 
     if (numbers.length === 0) {
       return message.channel.send(
