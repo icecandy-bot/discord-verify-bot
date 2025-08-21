@@ -237,7 +237,8 @@ client.on("messageCreate", async (message) => {
     });
   }
 
- import Jimp from "jimp";
+import jimp from "jimp";
+const Jimp = jimp;
 import { AttachmentBuilder } from "discord.js"; // 記得加這行
 
 // Step 2: 玩家上傳截圖 → OCR
