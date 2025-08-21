@@ -237,7 +237,8 @@ client.on("messageCreate", async (message) => {
     });
   }
 
-import jimp from "jimp";
+// 在需要用的地方（OCR 區塊）
+const { default: Jimp } = await import("jimp");
 const Jimp = jimp;
 import { AttachmentBuilder } from "discord.js"; // 記得加這行
 
@@ -250,19 +251,20 @@ if (message.attachments.size > 0) {
   await message.channel.send("📷 正在增強圖片並辨識，請稍候...");
 
   try {
-    // 下載並處理圖片
+    // ⚡ 動態載入 Jimp
+    const { default: Jimp } = await import("jimp");
+
     const image = await Jimp.read(imgUrl);
-   image
-  .resize(image.bitmap.width * 2, Jimp.AUTO) // 放大
-  .grayscale()                               // 灰階
-  .contrast(0.8)                             // 對比再拉高一點
-  .normalize()                               // 自動亮度校正
-  .posterize(2)                              // 減少顏色層級，變成更乾淨的黑白
-  .brightness(0.1);                          // 微調亮度
+    image
+      .resize(image.bitmap.width * 2, Jimp.AUTO)
+      .grayscale()
+      .contrast(0.8)
+      .normalize()
+      .posterize(2)
+      .brightness(0.1);
 
-
-    // 轉成 Buffer
     const buffer = await image.getBufferAsync(Jimp.MIME_PNG);
+
 
     // --- 把處理後的圖片丟回 Discord ---
     const processedAttachment = new AttachmentBuilder(buffer, { name: "processed.png" });
