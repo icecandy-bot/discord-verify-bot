@@ -3,6 +3,7 @@ import express from "express";
 import fetch from "node-fetch";
 import Tesseract from "tesseract.js";
 import dotenv from "dotenv";
+import { AttachmentBuilder } from "discord.js";
 
 dotenv.config();
 
@@ -239,7 +240,7 @@ client.on("messageCreate", async (message) => {
 
 // 在需要用的地方（OCR 區塊）
 const { default: Jimp } = await import("jimp");
-import { AttachmentBuilder } from "discord.js"; // 記得加這行
+
 
 // Step 2: 玩家上傳截圖 → OCR
 if (message.attachments.size > 0) {
