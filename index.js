@@ -269,8 +269,8 @@ if (message.attachments.size > 0) {
     const processedAttachment = new AttachmentBuilder(buffer, { name: "processed.png" });
     await message.channel.send({ content: "🖼️ 已處理過的圖片：", files: [processedAttachment] });
 
-const { data } = await Tesseract.recognize(buffer, "eng+osd", {
-  tessedit_char_whitelist: "0123456789",
+      const { data } = await Tesseract.recognize(buffer, "eng");
+      const text = data.text || "";
 });
 
 const numbers = (data.text.match(/\d[\d,]*/g) || [])
