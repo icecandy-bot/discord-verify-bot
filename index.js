@@ -144,17 +144,38 @@ app.get("/callback", async (req, res) => {
   }
 });
 
-// --- 驗證檢查 ---
+// --- 驗證檢查 & 角色管理 ---
 async function checkFinalVerification(userId) {
   const session = sessions.get(userId);
   if (!session) return;
+
   if (session.kills !== null && session.robloxVerified) {
     try {
       const channel = await client.channels.fetch(session.channelId);
+      const guild = channel.guild;
+      const member = await guild.members.fetch(session.state); // session.state 是 Discord User ID
+
       if (session.kills >= 3000) {
-        await channel.send(`🎉 所有驗證完成！玩家 **${session.playerName}** 擊殺數：**${session.kills}** ✅`);
+        // 驗證成功訊息
+        await channel.send(
+          `🎉 所有驗證完成！玩家 **${session.playerName}** 擊殺數：**${session.kills}** ✅`
+        );
+
+        const roleToAdd = "1401164021041860788";
+        const roleToRemove = "1393969444073639986";
+
+        // 只有在沒有角色時才增加 / 移除
+        if (!member.roles.cache.has(roleToAdd)) {
+          await member.roles.add(roleToAdd).catch(console.error);
+        }
+        if (member.roles.cache.has(roleToRemove)) {
+          await member.roles.remove(roleToRemove).catch(console.error);
+        }
+
       } else {
-        await channel.send(`❌ 驗證失敗！玩家 **${session.playerName}** 擊殺數只有 **${session.kills}**，必須 ≥ 3000 才能通過驗證。`);
+        await channel.send(
+          `❌ 驗證失敗！玩家 **${session.playerName}** 擊殺數只有 **${session.kills}**，必須 ≥ 3000 才能通過驗證。`
+        );
       }
     } catch (e) {
       console.error("[Discord Send Error - Finalize]", e);
@@ -163,6 +184,7 @@ async function checkFinalVerification(userId) {
     }
   }
 }
+
 
 // --- Discord Bot Commands ---
 client.once("ready", () => {
